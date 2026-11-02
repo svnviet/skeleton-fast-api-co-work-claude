@@ -1,9 +1,26 @@
 # Code conventions for FastAPI services built with Claude
 
-This file is the reusable rule set for any FastAPI microservice scaffolded from this skeleton.
-It was distilled from two real services built this way: `subtitle-service` and
-`news-script-generation-service` (both siblings of this repo's parent monorepo). Keep it short
-and concrete — a rule Claude can actually check itself against, not a style essay.
+This is a **common, shared skeleton** — not one team's internal doc. Every new FastAPI service
+across the organization is expected to start from this template, and it is realistic for
+**10,000+ developers across many independent teams and projects** to each fork/copy it over time.
+That changes how this file must be written and maintained:
+
+- Every rule must be **self-contained**. Never assume the reader has seen, or has access to, any
+  other specific service, repo, or internal system — write for a developer who has never seen any
+  project built from this skeleton before. An example referencing a real internal service name is
+  a bug in this doc, not a feature.
+- Keep it short and concrete — a rule Claude (or a human reviewer) can actually check a diff
+  against, not a style essay. If a rule needs three paragraphs to explain, it's probably two rules
+  or a bad rule.
+- Treat changes to **this file** with extra care: it is the one place where a small edit affects
+  every project started after it ships. Prefer additive changes; if a rule must change in a
+  breaking way (renaming a convention, flipping a default), call that out explicitly in the commit
+  message so downstream forks can find it later, and note it at the top of the relevant section
+  rather than silently rewriting it.
+- Opinionated defaults here (FastAPI, Pydantic v2, Alembic, pytest+httpx) exist so thousands of
+  services look and work alike — a developer moving between two unrelated projects built from this
+  skeleton should recognize the shape immediately. A project that must deviate should say why in
+  its own README, not by quietly drifting from these conventions.
 
 ## Project layout
 
@@ -85,7 +102,8 @@ time, unless `auth/api_key.py`'s "fail at boot" reasoning specifically applies).
 - A line in `.env.example` with a one-sentence comment explaining *why* it exists or what happens
   if it's left at its default — not just the var name.
 - A naming convention of `<SERVICE_NAME>_<THING>` for anything the *calling* service configures
-  about reaching this one (base URL, API key, timeout) — e.g. `SCRIPT_GENERATION_SERVICE_BASE_URL`
+  about reaching this one (base URL, API key, timeout) — e.g. a service named `billing` exposes
+  itself to callers as `BILLING_SERVICE_BASE_URL`/`BILLING_SERVICE_API_KEY`/`BILLING_SERVICE_TIMEOUT_MS`
   — so a caller's own `.env.example` reads clearly next to its other sibling-service vars.
 
 ## Contracts with a sibling service in another language
@@ -170,9 +188,16 @@ say so in a comment next to any `ENV` block that sets non-secret defaults.
 ## API versioning
 
 Don't add a `/v1/` prefix or any version-negotiation scheme until there's a second version that
-actually needs to coexist with the first. A single current contract, documented in `schemas.py`
-and this service's own README, is simpler to reason about and faster to iterate on — the explicit
-reason this skeleton exists.
+actually needs to coexist with the first. A single current contract, documented in `app/schemas/`
+and this service's own README, is simpler to reason about and faster to iterate on.
+
+## Linting & formatting
+
+At this scale, consistent formatting matters more than any individual developer's preference —
+it's what lets a reviewer from a different team read a diff without friction. Use one formatter
+and one linter, pinned in `requirements.txt`/`pyproject.toml`, configured in `pyproject.toml`, and
+run in CI on every PR: don't leave the choice per-project. Default to `ruff` (format + lint in one
+tool) unless the project has a specific reason not to — and if it doesn't, say why in its README.
 
 ## Git commits
 
