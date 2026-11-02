@@ -63,10 +63,64 @@ tests/
   test_*.py
 ```
 
-A route handler in `main.py` should be a thin wrapper that calls into a named function imported
-from the relevant package — never grow `main.py` into a dump of logic, config, or middleware
+A route handler in `main.py` should be a thin wrapper that calls a method on a service class
+(see Classes & OOP) imported from the relevant package — never grow `main.py` into a dump of logic, config, or middleware
 definitions. Within any package, split further by file the moment a second distinct thing shows
 up (e.g. `auth/api_key.py` plus a later `auth/jwt.py`, not both crammed into `auth/api_key.py`).
+
+## Classes & OOP
+
+Additive rule: every unit of logic in a feature package is a **class**, not a bag of module-level
+functions. Write the class first, from scratch, even when it has one method — same reasoning as
+"package first" above. `main.py` route handlers call a method on an instance of that class
+(`return service.create(body)`), where the instance comes from a `Depends(...)` provider.
+
+- **One responsibility per class, named for its role**: `*Service` (business logic), `*Repository`
+  (all DB access for one table/aggregate, in `app/db/`), `*Client` (outbound HTTP, e.g.
+  `GeminiClient`), `*Builder` (pure prompt/payload assembly), `*Settings` (config, see below).
+  A class that needs "and" in its description is two classes.
+- **Dependencies come in through `__init__`**, never imported-and-called globally inside methods
+  (`GeminiService(client: GeminiClient, builder: PromptBuilder)`). This is what lets tests swap a
+  collaborator without monkeypatching. Wire concrete instances once, in a `Depends` provider
+  (e.g. `app/<feature>/deps.py`), not inside the class.
+- **Data is Pydantic models (`app/schemas/`) or SQLAlchemy models (`app/db/models.py`); behavior is
+  services.** Don't put business logic on the schema classes, and don't pass raw `dict`s between
+  layers — pass typed models.
+- **Inherit only for a real, existing second implementation**; define the contract with
+  `typing.Protocol` or `abc.ABC` only when two implementations exist today. No base class "for
+  later" (see General style).
+- **State lives on `self` and is set in `__init__`**; no mutable class attributes, no module-level
+  singletons holding state. Stateless helpers inside a class are `@staticmethod`; truly generic
+  pure helpers with no owning concept may stay as module functions in a `utils.py`.
+- **Wording constants in `app/prompts/` stay plain string constants**, and `app/core/config.py`
+  may keep its one-function-per-env-var shape (a `Settings` class wrapping them is fine, not
+  required) — the class rule applies to logic, not to data and constants.
+- Fully type-annotate public methods; keep classes small (a class past ~200 lines is split by
+  responsibility, in its own file).
+
+Example shape (self-contained, adapt names):
+
+```python
+# app/orders/service.py
+class OrderService:
+    def __init__(self, repo: OrderRepository, notifier: NotifierClient) -> None:
+        self._repo = repo
+        self._notifier = notifier
+
+    def create(self, body: OrderCreate) -> OrderRead:
+        order = self._repo.add(body)
+        self._notifier.send(order.id)  # fail-soft: best-effort, see HTTP calls
+        return OrderRead.model_validate(order)
+
+# app/orders/deps.py
+def get_order_service(session: Session = Depends(get_session)) -> OrderService:
+    return OrderService(OrderRepository(session), NotifierClient())
+
+# app/main.py
+@router.post("/orders", response_model=OrderRead)
+def create_order(body: OrderCreate, svc: OrderService = Depends(get_order_service)):
+    return svc.create(body)
+```
 
 ## Auth
 
